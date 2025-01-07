@@ -1,0 +1,123 @@
+// Include the ROME library.
+#include <ROME.h>
+
+// Instantiate four motors with their respective pins.
+// Arguments for ROME (PWM pin (yellow), Hall Effect sensor pin (blue), Relay pin (one of 4 colors))
+ROME motor1(6,2,9);  
+ROME motor2(5,3,10); 
+ROME motor3(7,18,11);
+ROME motor4(8,19,12);
+
+float controlSpeeds[4] = {0, 0, 0, 0};
+
+// Calculate the number of values in one of the arrays.
+// It's assumed that all arrays are of the same length.
+const int numberOfValues = sizeof(u1_values) / sizeof(u1_values[0]);
+
+// currentIndex keeps track of which set of values (from the arrays) is currently being used to control the motors.
+int currentIndex = 0;
+
+// An array that stores the previous direction of each motor. // 1 indicates forward and -1 indicates reverse, 0 off.
+int previousDirection[] = {0, 0, 0, 0};
+
+// Create an array of ROME motor objects for easier looping and control.
+ROME motors[] = {motor1, motor2, motor3, motor4};
+
+void setup() 
+{
+  Serial.begin(9600);
+}
+
+// This function runs repeatedly after the setup() finishes.
+void loop() {
+    if (currentIndex < numberOfValues) {
+        float speeds[] = {u1_values[currentIndex], u2_values[currentIndex], u3_values[currentIndex], u4_values[currentIndex]};
+        
+        bool* directionChanges = needsDirectionChange(speeds);
+
+        // Loop through each motor to see if it needs a direction change
+        for (int i = 0; i < 4; i++) {
+            if (directionChanges[i]) {
+                motors[i].disableMotor();
+            }
+        }
+
+        //delay(0); // This delay is constant and might be necessary for the direction change and reactivation of the motor.
+
+        // Set the direction for each motor based on the speeds array.
+        setAllDirections(speeds);
+
+        for (int i = 0; i < 4; i++) {
+            setMotorSpeed(motors[i], speeds[i]);
+        }
+
+        currentIndex++;
+
+        // Compute the delay based on the difference between the current time and the previous time
+        if (currentIndex < numberOfValues) {
+            float timeDifference = timeValues[currentIndex] - timeValues[currentIndex - 1];
+            delay(timeDifference*1000); // Assuming timeValues[] is in seconds and delay() function expects milliseconds
+        }
+    } else {
+        motor1.disableMotor();
+        motor2.disableMotor();
+        motor3.disableMotor();
+        motor4.disableMotor();
+        
+        while(1); // Infinite loop once done
+    }
+}
+
+
+// Given a motor, its previous direction, and the current speed value, 
+// this function sets the direction of the motor.
+void setMotorDirection(ROME &motor, int &previousDir, float currentSpeedValue) {
+    // Determine the current direction based on the sign of the speed value.
+    int currentDir = (currentSpeedValue >= 0) ? 1 : -1; 
+    
+    // If the direction has changed, stop the motor briefly.
+    if (previousDir != currentDir) {
+        motor.disableMotor();
+        //delay(50); // TODO: Delay is set to 80 Should it be another value?
+    }
+
+    // Set the motor's direction based on the determined current direction.
+    if (currentDir > 0) {
+        motor.motorForward();
+    } else {
+        motor.motorReverse();
+    }
+    
+    // Update the stored previous direction for the next check.
+    previousDir = currentDir;
+}
+
+// Given a motor and a speed value, this function sets the speed of the motor.
+void setMotorSpeed(ROME &motor, float currentSpeedValue) {
+    // Map the given speed value to an appropriate range for the motor.
+    int currentSpeed = map(currentSpeedValue, -19.5192, 19.5192, -255, 255);
+    
+    // Activate the motor with the mapped speed value.
+    motor.motorOn(abs(currentSpeed));
+}
+
+// This function sets the direction of all motors based on the given speeds array.
+void setAllDirections(float speeds[]) {
+    for (int i = 0; i < 4; i++) {
+        setMotorDirection(motors[i], previousDirection[i], speeds[i]);
+    }
+}
+
+// This function checks if any motor needs to change its direction based on the provided speeds.
+bool* needsDirectionChange(float speeds[]) {
+    static bool directionChange[4];
+    for (int i = 0; i < 4; i++) {
+        int currentDir = (speeds[i] >= 0) ? 1 : -1;
+        if (previousDirection[i] != currentDir) {
+            directionChange[i] = true;
+        } else {
+            directionChange[i] = false;
+        }
+    }
+    return directionChange;
+}
